@@ -368,19 +368,16 @@
     el, img: el.querySelector('img'), obv: el.dataset.obv, rev: el.dataset.rev, turns: 0, gpu: null
   }));
   let active = coins[0];
-  // size of each coin within its square image, so clicks just outside a small coin close the view
-  coins.forEach((c) => {
-    const i = new Image();
-    i.onload = () => {
-      const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S;
-      const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0, S, S);
-      const d = x.getImageData(0, 0, S, S).data; let r = 0;
-      for (let py = 0; py < S; py++) for (let px = 0; px < S; px++)
-        if (d[(py * S + px) * 4 + 3] > 128) r = Math.max(r, Math.hypot(px + 0.5 - S / 2, py + 0.5 - S / 2));
-      c.hit = Math.min(0.5, r / S + 0.01);
-    };
-    i.src = c.obv;
-  });
+  // size of the coin within its square image, so taps just outside a small coin close the view
+  function measureHit(c) {
+    if (c.hit) return;
+    const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(c.img, 0, 0, S, S);
+    const d = x.getImageData(0, 0, S, S).data; let r = 0;
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++)
+      if (d[(py * S + px) * 4 + 3] > 128) r = Math.max(r, Math.hypot(px + 0.5 - S / 2, py + 0.5 - S / 2));
+    c.hit = Math.min(0.5, r / S + 0.01);
+  }
   const veil = document.getElementById('veil');
   const viewer = document.getElementById('viewer');
   let state = 'closed';
@@ -541,18 +538,43 @@
     return { buf: buffer(v), count: (n + 1) * 2 };
   }
 
-  const load = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.src = src; });
-  coins.forEach((coin) => {
-    Promise.all([load(coin.obv), load(coin.rev)]).then(([o, r]) => {
-      const e1 = edgeColor(o), e2 = edgeColor(r), edge = e1.map((v, i) => (v + e2[i]) / 2);
-      coin.gpu = {
-        front: texture(o), back: texture(r),
-        rim: buildRim(outline(o, 360, false), outline(r, 360, true)),
-        lit: edge.map((v) => Math.min(1, v * 1.15)), dark: edge.map((v) => v * 0.3)
-      };
-      if (coin === active) draw();
-    });
-  });
+  // Coins are prepared for 3D only when needed, and only the last few stay in memory.
+  const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  const KEEP = 3;
+  const recent = [];
+  function remember(coin) {
+    const i = recent.indexOf(coin); if (i >= 0) recent.splice(i, 1);
+    recent.unshift(coin);
+    while (recent.length > KEEP) {
+      const old = recent.pop();
+      if (old === active || !old.gpu) continue;
+      if (old.gpu.front) gl.deleteTexture(old.gpu.front);
+      if (old.gpu.back) gl.deleteTexture(old.gpu.back);
+      old.gpu = null; old.backReady = null;
+    }
+  }
+  function fetchBack(coin) {                    // started as soon as a finger touches the coin
+    if (!coin.revImg) coin.revImg = load(coin.rev).catch(() => (coin.revImg = null));
+    return coin.revImg;
+  }
+  async function prepareFront(coin) {
+    if (coin.gpu) { remember(coin); return; }
+    // the cell may be showing the reverse; the front texture must always be the obverse
+    let img = coin.img;
+    if (!img.src.endsWith(coin.obv)) img = await load(coin.obv);
+    try { await img.decode(); } catch (e) {}
+    coin.gpu = { front: texture(img), back: null };
+    remember(coin);
+  }
+  function prepareBack(coin) {
+    if (!coin.backReady) {
+      coin.backReady = fetchBack(coin).then((img) => {
+        if (img && coin.gpu && !coin.gpu.back) coin.gpu.back = texture(img);
+        if (coin === active) draw();
+      });
+    }
+    return coin.backReady;
+  }
 
   function sizeCanvas() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -605,7 +627,7 @@
     const light = 1 - 0.72 * (1 - Math.abs(c)) * (towardLight ? 0.6 : 1);
     gl.uniform1f(gl.getUniformLocation(faceProg, 'uLight'), light);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, frontVisible ? g.front : g.back);
+    gl.bindTexture(gl.TEXTURE_2D, frontVisible ? g.front : (g.back || g.front));
     gl.uniform1i(gl.getUniformLocation(faceProg, 'uTex'), 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, frontVisible ? frontBuf : backBuf);
     bindAttribs(faceProg);
@@ -718,13 +740,22 @@
     active = coin;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0; target = angle = coin.turns * 180; velocity = 0;
-    viewer.hidden = false;
-    veil.classList.add('on');
-    run(homeTransform(), true, finishedOpen);
-    requestAnimationFrame(() => coin.el.classList.add('away'));
+    measureHit(coin);
+    prepareFront(coin).then(() => {
+      // a coin left reverse-up needs its back before it can be shown
+      return coin.turns % 2 ? prepareBack(coin) : null;
+    }).then(() => {
+      if (state !== 'opening' || active !== coin) return;
+      viewer.hidden = false;
+      veil.classList.add('on');
+      run(homeTransform(), true, finishedOpen);   // sizes the canvas and draws the coin before this frame paints
+      coin.el.classList.add('away');              // so the cell coin and the 3D coin swap in the same frame
+      prepareBack(coin);
+    });
   }
 
   function close() {
+    if (state === 'opening' && !anims.length) { state = 'closed'; return; }   // still preparing, nothing on screen yet
     if (state === 'opening') {
       anims.forEach((a) => a.reverse());
       state = 'closing';
@@ -740,7 +771,9 @@
   function flip() {
     if (state !== 'open' && state !== 'opening') return;
     active.turns += 1;
-    spinTo(active.turns * 180);
+    const coin = active, t = coin.turns * 180;
+    if (coin.gpu && !coin.gpu.back) prepareBack(coin).then(() => { if (coin === active) spinTo(t); });
+    else spinTo(t);
   }
 
   // Only the coin itself is clickable; the transparent corners of its box count as background.
@@ -771,7 +804,10 @@
     if (state !== 'closed' && ['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key) && e.target !== viewer) e.preventDefault();
   });
 
-  coins.forEach((coin) => coin.el.addEventListener('click', () => open(coin)));
+  coins.forEach((coin) => {
+    coin.el.addEventListener('pointerdown', () => fetchBack(coin), { passive: true });
+    coin.el.addEventListener('click', () => open(coin));
+  });
   viewer.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
   });
