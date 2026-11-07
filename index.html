@@ -68,7 +68,10 @@
     aspect-ratio: 1;
     filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
   }
-  .slot:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: -2px; }
+  html { -webkit-tap-highlight-color: transparent; }
+  .slot:focus, .viewer:focus, .veil:focus { outline: none; }
+  .using-keys .slot:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: -2px; }
+  .viewer, .viewer *, .veil { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .slot.away img { visibility: hidden; }
 
   .veil {
@@ -354,6 +357,13 @@
 <script>
 (() => {
   // every coin in the trays; the viewer shows whichever one was clicked
+  // keyboard users keep visible focus; touch and mouse users never see a focus ring
+  let usingKeys = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' || e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { usingKeys = true; document.documentElement.classList.add('using-keys'); }
+  }, true);
+  window.addEventListener('pointerdown', () => { usingKeys = false; document.documentElement.classList.remove('using-keys'); }, true);
+
   const coins = [...document.querySelectorAll('.slot')].map((el) => ({
     el, img: el.querySelector('img'), obv: el.dataset.obv, rev: el.dataset.rev, turns: 0, gpu: null
   }));
@@ -688,12 +698,12 @@
     veil.classList.remove('on');
     active.el.classList.remove('away');
     state = 'closed';
-    active.el.focus({ preventScroll: true });
+    if (usingKeys) active.el.focus({ preventScroll: true });
   }
   function finishedOpen() {
     settle();
     state = 'open';
-    viewer.focus({ preventScroll: true });
+    if (usingKeys) viewer.focus({ preventScroll: true });
   }
 
   function open(coin) {
