@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Svimon Shelves</title>
+<meta name="description" content="Svimon coin collection">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<style>
+  /* Layout: one column of 8 trays, each scaled to the largest size that fits the screen */
+  :root {
+    --bg: #000;
+    --ratio: 835 / 1252;
+    --veil: rgba(0, 0, 0, 0.45);
+    --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+    color-scheme: dark;
+  }
+  html, body { background: var(--bg); }
+  body { padding: 0; }
+
+  .cabinet {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .shelf {
+    position: relative;
+    width: min(100%, calc(100vh * var(--ratio)));
+    width: min(100%, calc(100svh * var(--ratio)));
+    max-width: 100%;
+    aspect-ratio: var(--ratio);
+  }
+  .shelf > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Cells of the tray, measured in pixels on the 835 x 1252 photo.
+     Columns: 68–215, 250–401, 435–587, 620–773. Rows: 66–232, 260–422, 450–611, 639–800, 827–989, 1013–1179 */
+  .slot {
+    position: absolute;
+    left: calc(var(--x) / 835 * 100%);
+    top: calc(var(--y) / 1252 * 100%);
+    width: calc(var(--w) / 835 * 100%);
+    height: calc(var(--h) / 1252 * 100%);
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: zoom-in;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .slot img {
+    width: 96%;
+    transform: translateY(2.5%);   /* sit on the cell floor, below the visible top wall */
+    height: auto;
+    aspect-ratio: 1;
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
+  }
+  .slot:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: -2px; }
+  .slot.away img { visibility: hidden; }
+
+  .veil {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: var(--veil);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    opacity: 0;
+    pointer-events: none;
+    cursor: zoom-out;
+    will-change: opacity;
+  }
+  .veil.on { opacity: 1; pointer-events: auto; }
+
+  /* Viewer: the coin is drawn on a canvas. Face-on it is exactly the photograph;
+     the edge only exists in the drawing while the coin is turned. */
+  .viewer {
+    position: fixed;
+    z-index: 30;
+    cursor: pointer;
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+  /* Soft contact shadow; script moves it away and softens it as the coin lifts */
+  .viewer .shadow {
+    position: absolute;
+    inset: 3%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, 0.7) 55%, rgba(0, 0, 0, 0.35) 80%, rgba(0, 0, 0, 0) 100%);
+    transform: translate3d(0, 4%, 0) scale(1.02);
+    opacity: 0.55;
+    will-change: transform, opacity;
+  }
+  .viewer .stage {
+    position: absolute;
+    inset: 0;
+    perspective: 2400px;
+  }
+  .viewer .tilt {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  /* canvas overhangs the coin's box so the near half can grow toward you without being clipped */
+  .viewer canvas {
+    position: absolute;
+    display: block;
+    left: -15%;
+    top: -15%;
+    width: 130%;
+    height: 130%;
+    pointer-events: none;
+  }
+
+</style>
+</head>
+<body>
+<main class="cabinet">
+  <div class="shelf">
+    <img src="shelf.jpg" alt="Shelf 1" width="835" height="1252">
+    <button class="slot" type="button" aria-label="View coin 1" style="--x: 68; --y: 63; --w: 147; --h: 169"
+            data-obv="coins/c01-obv.webp" data-rev="coins/c01-rev.webp">
+      <img src="coins/c01-obv.webp" alt="Coin 1" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 2" style="--x: 250; --y: 63; --w: 151; --h: 169"
+            data-obv="coins/c02-obv.webp" data-rev="coins/c02-rev.webp">
+      <img src="coins/c02-obv.webp" alt="Coin 2" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 3" style="--x: 435; --y: 63; --w: 152; --h: 169"
+            data-obv="coins/c03-obv.webp" data-rev="coins/c03-rev.webp">
+      <img src="coins/c03-obv.webp" alt="Coin 3" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 4" style="--x: 620; --y: 63; --w: 153; --h: 169"
+            data-obv="coins/c04-obv.webp" data-rev="coins/c04-rev.webp">
+      <img src="coins/c04-obv.webp" alt="Coin 4" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 5" style="--x: 68; --y: 260; --w: 147; --h: 162"
+            data-obv="coins/c05-obv.webp" data-rev="coins/c05-rev.webp">
+      <img src="coins/c05-obv.webp" alt="Coin 5" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 6" style="--x: 250; --y: 260; --w: 151; --h: 162"
+            data-obv="coins/c06-obv.webp" data-rev="coins/c06-rev.webp">
+      <img src="coins/c06-obv.webp" alt="Coin 6" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 7" style="--x: 435; --y: 260; --w: 152; --h: 162"
+            data-obv="coins/c07-obv.webp" data-rev="coins/c07-rev.webp">
+      <img src="coins/c07-obv.webp" alt="Coin 7" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 8" style="--x: 620; --y: 260; --w: 153; --h: 162"
+            data-obv="coins/c08-obv.webp" data-rev="coins/c08-rev.webp">
+      <img src="coins/c08-obv.webp" alt="Coin 8" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 9" style="--x: 68; --y: 450; --w: 147; --h: 161"
+            data-obv="coins/c09-obv.webp" data-rev="coins/c09-rev.webp">
+      <img src="coins/c09-obv.webp" alt="Coin 9" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 10" style="--x: 250; --y: 450; --w: 151; --h: 161"
+            data-obv="coins/c10-obv.webp" data-rev="coins/c10-rev.webp">
+      <img src="coins/c10-obv.webp" alt="Coin 10" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 11" style="--x: 435; --y: 450; --w: 152; --h: 161"
+            data-obv="coins/c11-obv.webp" data-rev="coins/c11-rev.webp">
+      <img src="coins/c11-obv.webp" alt="Coin 11" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 12" style="--x: 620; --y: 450; --w: 153; --h: 161"
+            data-obv="coins/c12-obv.webp" data-rev="coins/c12-rev.webp">
+      <img src="coins/c12-obv.webp" alt="Coin 12" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 13" style="--x: 68; --y: 639; --w: 147; --h: 161"
+            data-obv="coins/c13-obv.webp" data-rev="coins/c13-rev.webp">
+      <img src="coins/c13-obv.webp" alt="Coin 13" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 14" style="--x: 250; --y: 639; --w: 151; --h: 161"
+            data-obv="coins/c14-obv.webp" data-rev="coins/c14-rev.webp">
+      <img src="coins/c14-obv.webp" alt="Coin 14" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 15" style="--x: 435; --y: 639; --w: 152; --h: 161"
+            data-obv="coins/c15-obv.webp" data-rev="coins/c15-rev.webp">
+      <img src="coins/c15-obv.webp" alt="Coin 15" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 16" style="--x: 620; --y: 639; --w: 153; --h: 161"
+            data-obv="coins/c16-obv.webp" data-rev="coins/c16-rev.webp">
+      <img src="coins/c16-obv.webp" alt="Coin 16" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 17" style="--x: 68; --y: 827; --w: 147; --h: 162"
+            data-obv="coins/c17-obv.webp" data-rev="coins/c17-rev.webp">
+      <img src="coins/c17-obv.webp" alt="Coin 17" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 18" style="--x: 250; --y: 827; --w: 151; --h: 162"
+            data-obv="coins/c18-obv.webp" data-rev="coins/c18-rev.webp">
+      <img src="coins/c18-obv.webp" alt="Coin 18" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 19" style="--x: 435; --y: 827; --w: 152; --h: 162"
+            data-obv="coins/c19-obv.webp" data-rev="coins/c19-rev.webp">
+      <img src="coins/c19-obv.webp" alt="Coin 19" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 20" style="--x: 620; --y: 827; --w: 153; --h: 162"
+            data-obv="coins/c20-obv.webp" data-rev="coins/c20-rev.webp">
+      <img src="coins/c20-obv.webp" alt="Coin 20" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 21" style="--x: 68; --y: 1013; --w: 147; --h: 166"
+            data-obv="coins/c21-obv.webp" data-rev="coins/c21-rev.webp">
+      <img src="coins/c21-obv.webp" alt="Coin 21" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 22" style="--x: 250; --y: 1013; --w: 151; --h: 166"
+            data-obv="coins/c22-obv.webp" data-rev="coins/c22-rev.webp">
+      <img src="coins/c22-obv.webp" alt="Coin 22" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 23" style="--x: 435; --y: 1013; --w: 152; --h: 166"
+            data-obv="coins/c23-obv.webp" data-rev="coins/c23-rev.webp">
+      <img src="coins/c23-obv.webp" alt="Coin 23" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 24" style="--x: 620; --y: 1013; --w: 153; --h: 166"
+            data-obv="coins/c24-obv.webp" data-rev="coins/c24-rev.webp">
+      <img src="coins/c24-obv.webp" alt="Coin 24" width="1024" height="1024">
+    </button>
+  </div>
+  <div class="shelf">
+    <img src="shelf.jpg" alt="Shelf 2" width="835" height="1252">
+    <button class="slot" type="button" aria-label="View coin 25" style="--x: 68; --y: 63; --w: 147; --h: 169"
+            data-obv="coins/c25-obv.webp" data-rev="coins/c25-rev.webp">
+      <img src="coins/c25-obv.webp" alt="Coin 25" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 26" style="--x: 250; --y: 63; --w: 151; --h: 169"
+            data-obv="coins/c26-obv.webp" data-rev="coins/c26-rev.webp">
+      <img src="coins/c26-obv.webp" alt="Coin 26" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 27" style="--x: 435; --y: 63; --w: 152; --h: 169"
+            data-obv="coins/c27-obv.webp" data-rev="coins/c27-rev.webp">
+      <img src="coins/c27-obv.webp" alt="Coin 27" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 28" style="--x: 620; --y: 63; --w: 153; --h: 169"
+            data-obv="coins/c28-obv.webp" data-rev="coins/c28-rev.webp">
+      <img src="coins/c28-obv.webp" alt="Coin 28" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 29" style="--x: 68; --y: 260; --w: 147; --h: 162"
+            data-obv="coins/c29-obv.webp" data-rev="coins/c29-rev.webp">
+      <img src="coins/c29-obv.webp" alt="Coin 29" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 30" style="--x: 250; --y: 260; --w: 151; --h: 162"
+            data-obv="coins/c30-obv.webp" data-rev="coins/c30-rev.webp">
+      <img src="coins/c30-obv.webp" alt="Coin 30" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 31" style="--x: 435; --y: 260; --w: 152; --h: 162"
+            data-obv="coins/c31-obv.webp" data-rev="coins/c31-rev.webp">
+      <img src="coins/c31-obv.webp" alt="Coin 31" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 32" style="--x: 620; --y: 260; --w: 153; --h: 162"
+            data-obv="coins/c32-obv.webp" data-rev="coins/c32-rev.webp">
+      <img src="coins/c32-obv.webp" alt="Coin 32" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 33" style="--x: 68; --y: 450; --w: 147; --h: 161"
+            data-obv="coins/c33-obv.webp" data-rev="coins/c33-rev.webp">
+      <img src="coins/c33-obv.webp" alt="Coin 33" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 34" style="--x: 250; --y: 450; --w: 151; --h: 161"
+            data-obv="coins/c34-obv.webp" data-rev="coins/c34-rev.webp">
+      <img src="coins/c34-obv.webp" alt="Coin 34" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 35" style="--x: 435; --y: 450; --w: 152; --h: 161"
+            data-obv="coins/c35-obv.webp" data-rev="coins/c35-rev.webp">
+      <img src="coins/c35-obv.webp" alt="Coin 35" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 36" style="--x: 620; --y: 450; --w: 153; --h: 161"
+            data-obv="coins/c36-obv.webp" data-rev="coins/c36-rev.webp">
+      <img src="coins/c36-obv.webp" alt="Coin 36" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 37" style="--x: 68; --y: 639; --w: 147; --h: 161"
+            data-obv="coins/c37-obv.webp" data-rev="coins/c37-rev.webp">
+      <img src="coins/c37-obv.webp" alt="Coin 37" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 38" style="--x: 250; --y: 639; --w: 151; --h: 161"
+            data-obv="coins/c38-obv.webp" data-rev="coins/c38-rev.webp">
+      <img src="coins/c38-obv.webp" alt="Coin 38" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 39" style="--x: 435; --y: 639; --w: 152; --h: 161"
+            data-obv="coins/c39-obv.webp" data-rev="coins/c39-rev.webp">
+      <img src="coins/c39-obv.webp" alt="Coin 39" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 40" style="--x: 620; --y: 639; --w: 153; --h: 161"
+            data-obv="coins/c40-obv.webp" data-rev="coins/c40-rev.webp">
+      <img src="coins/c40-obv.webp" alt="Coin 40" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 41" style="--x: 68; --y: 827; --w: 147; --h: 162"
+            data-obv="coins/c41-obv.webp" data-rev="coins/c41-rev.webp">
+      <img src="coins/c41-obv.webp" alt="Coin 41" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 42" style="--x: 250; --y: 827; --w: 151; --h: 162"
+            data-obv="coins/c42-obv.webp" data-rev="coins/c42-rev.webp">
+      <img src="coins/c42-obv.webp" alt="Coin 42" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 43" style="--x: 435; --y: 827; --w: 152; --h: 162"
+            data-obv="coins/c43-obv.webp" data-rev="coins/c43-rev.webp">
+      <img src="coins/c43-obv.webp" alt="Coin 43" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 44" style="--x: 620; --y: 827; --w: 153; --h: 162"
+            data-obv="coins/c44-obv.webp" data-rev="coins/c44-rev.webp">
+      <img src="coins/c44-obv.webp" alt="Coin 44" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 45" style="--x: 68; --y: 1013; --w: 147; --h: 166"
+            data-obv="coins/c45-obv.webp" data-rev="coins/c45-rev.webp">
+      <img src="coins/c45-obv.webp" alt="Coin 45" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 46" style="--x: 250; --y: 1013; --w: 151; --h: 166"
+            data-obv="coins/c46-obv.webp" data-rev="coins/c46-rev.webp">
+      <img src="coins/c46-obv.webp" alt="Coin 46" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 47" style="--x: 435; --y: 1013; --w: 152; --h: 166"
+            data-obv="coins/c47-obv.webp" data-rev="coins/c47-rev.webp">
+      <img src="coins/c47-obv.webp" alt="Coin 47" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 48" style="--x: 620; --y: 1013; --w: 153; --h: 166"
+            data-obv="coins/c48-obv.webp" data-rev="coins/c48-rev.webp">
+      <img src="coins/c48-obv.webp" alt="Coin 48" width="1024" height="1024">
+    </button>
+  </div>
+  <div class="shelf">
+    <img src="shelf.jpg" alt="Shelf 3" width="835" height="1252" loading="lazy">
+    <button class="slot" type="button" aria-label="View coin 49" style="--x: 68; --y: 63; --w: 147; --h: 169"
+            data-obv="coins/c49-obv.webp" data-rev="coins/c49-rev.webp">
+      <img src="coins/c49-obv.webp" alt="Coin 49" width="1024" height="1024">
+    </button>
+    <button class="slot" type="button" aria-label="View coin 50" style="--x: 250; --y: 63; --w: 151; --h: 169"
+            data-obv="coins/c50-obv.webp" data-rev="coins/c50-rev.webp">
+      <img src="coins/c50-obv.webp" alt="Coin 50" width="1024" height="1024">
+    </button>
+  </div>
+  <div class="shelf"><img src="shelf.jpg" alt="Shelf 4" width="835" height="1252" loading="lazy"></div>
+  <div class="shelf"><img src="shelf.jpg" alt="Shelf 5" width="835" height="1252" loading="lazy"></div>
+  <div class="shelf"><img src="shelf.jpg" alt="Shelf 6" width="835" height="1252" loading="lazy"></div>
+  <div class="shelf"><img src="shelf.jpg" alt="Shelf 7" width="835" height="1252" loading="lazy"></div>
+  <div class="shelf"><img src="shelf.jpg" alt="Shelf 8" width="835" height="1252" loading="lazy"></div>
+</main>
+
+<div class="veil" id="veil"></div>
+<div class="viewer" id="viewer" hidden role="button" tabindex="0" aria-label="Turn coin over">
+  <div class="shadow"></div>
+  <div class="stage"><div class="tilt" id="tilt"><canvas id="coin" aria-hidden="true"></canvas></div></div>
+</div>
+
+<script>
+(() => {
+  // every coin in the trays; the viewer shows whichever one was clicked
+  const coins = [...document.querySelectorAll('.slot')].map((el) => ({
+    el, img: el.querySelector('img'), obv: el.dataset.obv, rev: el.dataset.rev, turns: 0, gpu: null
+  }));
+  let active = coins[0];
+  // size of each coin within its square image, so clicks just outside a small coin close the view
+  coins.forEach((c) => {
+    const i = new Image();
+    i.onload = () => {
+      const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S;
+      const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0, S, S);
+      const d = x.getImageData(0, 0, S, S).data; let r = 0;
+      for (let py = 0; py < S; py++) for (let px = 0; px < S; px++)
+        if (d[(py * S + px) * 4 + 3] > 128) r = Math.max(r, Math.hypot(px + 0.5 - S / 2, py + 0.5 - S / 2));
+      c.hit = Math.min(0.5, r / S + 0.01);
+    };
+    i.src = c.obv;
+  });
+  const veil = document.getElementById('veil');
+  const viewer = document.getElementById('viewer');
+  let state = 'closed';
+
+  // ---- Coin renderer (WebGL) ----
+  // A real 3D coin in perspective: two photographed faces and a rim that follows the coin's
+  // own outline. The half that swings toward you grows, the half that swings away shrinks.
+  // The rim sits just inside the outline, so with a face toward you only the photo is visible.
+  const canvas = document.getElementById('coin');
+  const gl = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: true, alpha: true });
+  const PAD = 1.3;            // canvas size relative to the coin's box (room for the near half to grow)
+  const THICK = 0.057;         // thickness in box units (box = 2 units across)
+  const CAM = 6.0;            // camera distance in the same units
+  const INSET = 0.012;        // rim tucked inside the photo's outline
+  const L = (() => { const v = [-0.45, 0.55, 0.7]; const m = Math.hypot(...v); return v.map((x) => x / m); })(); // upper-left light
+
+  const VS = `
+    attribute vec3 aPos;      // u, v, w in coin space
+    attribute vec2 aUV;
+    attribute vec3 aNrm;
+    attribute float aGrain;
+    uniform float uS, uC, uCam, uRest, uPad;
+    varying vec2 vUV;
+    varying vec3 vN;
+    varying float vGrain;
+    void main() {
+      float x = aPos.x * uC + aPos.z * uS;
+      float z = -aPos.x * uS + aPos.z * uC;
+      float w = (uCam - z) / uCam * uRest;
+      gl_Position = vec4(x / uPad, aPos.y / uPad, (-z / 4.0) * w, w);
+      vUV = aUV;
+      vN = vec3(aNrm.x * uC + aNrm.z * uS, aNrm.y, -aNrm.x * uS + aNrm.z * uC);
+      vGrain = aGrain;
+    }`;
+  const FS_FACE = `
+    precision mediump float;
+    uniform sampler2D uTex;
+    uniform float uLight;
+    varying vec2 vUV;
+    void main() {
+      vec4 c = texture2D(uTex, vUV);
+      if (c.a < 0.004) discard;
+      gl_FragColor = vec4(c.rgb * uLight, c.a);
+    }`;
+  const FS_RIM = `
+    precision mediump float;
+    uniform vec3 uL, uLit, uDark;
+    varying vec3 vN;
+    varying float vGrain;
+    void main() {
+      vec3 n = normalize(vN);
+      float d = max(dot(n, uL), 0.0);
+      float k = (0.22 + 0.78 * d) * vGrain;
+      gl_FragColor = vec4(mix(uDark, uLit, k), 1.0);
+    }`;
+
+  function program(vs, fs) {
+    const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(pr, 0, 'aPos');
+    gl.linkProgram(pr);
+    return pr;
+  }
+  const faceProg = program(VS, FS_FACE);
+  const rimProg = program(VS, FS_RIM);
+
+  // interleaved vertex buffer: pos(3) uv(2) nrm(3) grain(1)
+  const STRIDE = 9 * 4;
+  function buffer(data) { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW); return b; }
+  function bindAttribs(pr) {
+    const at = (name, size, off) => { const l = gl.getAttribLocation(pr, name); if (l < 0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, size, gl.FLOAT, false, STRIDE, off * 4); };
+    at('aPos', 3, 0); at('aUV', 2, 3); at('aNrm', 3, 5); at('aGrain', 1, 8);
+  }
+
+  const hw = THICK / 2;
+  const quad = (w, mirror) => {
+    const n = w > 0 ? 1 : -1;
+    const v = [];
+    for (const [u, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const tu = mirror ? (1 - u) / 2 : (u + 1) / 2;
+      v.push(u, y, w, tu, (1 - y) / 2, 0, 0, n, 1);
+    }
+    return buffer(v);
+  };
+  const frontBuf = quad(hw, false);
+  const backBuf = quad(-hw, true);
+
+  function texture(img) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 1024;
+    c.getContext('2d').drawImage(img, 0, 0, 1024, 1024);
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const ext = gl.getExtension('EXT_texture_filter_anisotropic');
+    if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    return t;
+  }
+
+  // outline radius at each angle, read from the photo's transparency
+  function outline(img, n, mirror) {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, S, S);
+    const a = x.getImageData(0, 0, S, S).data;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const th = (i / n) * 2 * Math.PI;
+      const dx = Math.cos(th) * (mirror ? -1 : 1), dy = Math.sin(th);
+      let r = 0;
+      for (let rr = S * 0.3; rr < S * 0.5; rr += 0.5) {
+        const px = Math.floor(S / 2 + rr * dx), py = Math.floor(S / 2 + rr * dy);
+        if (px < 0 || py < 0 || px >= S || py >= S) break;
+        if (a[(py * S + px) * 4 + 3] > 128) r = rr;
+      }
+      out.push(r / (S / 2));
+    }
+    // light smoothing
+    return out.map((r, i) => (out[(i - 1 + n) % n] + 2 * r + out[(i + 1) % n]) / 4);
+  }
+
+  // average colour of the metal near the coin's edge, so each coin's rim matches its own photo
+  function edgeColor(img) {
+    const S = 128, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, S, S);
+    const d = x.getImageData(0, 0, S, S).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const i = (py * S + px) * 4, dist = Math.hypot(px - S / 2, py - S / 2) / (S / 2);
+      if (d[i + 3] > 220 && dist > 0.8) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    }
+    return n ? [r / n / 255, g / n / 255, b / n / 255] : [0.25, 0.23, 0.2];
+  }
+
+  function buildRim(rf, rb) {
+    const n = rf.length, v = [];
+    for (let i = 0; i <= n; i++) {
+      const k = i % n;
+      const th = (k / n) * 2 * Math.PI;
+      const cx = Math.cos(th), cy = -Math.sin(th);           // image y runs down, coin y runs up
+      const grain = 0.9 + 0.1 * Math.sin(k * 12.9898) * Math.cos(k * 4.1414);
+      const r1 = Math.min(rf[k], rb[k]) - INSET, r2 = r1;   // one outline for both ends, so the edge never pokes out past either face
+      v.push(cx * r1, cy * r1, hw, 0, 0, cx, cy, 0, grain);
+      v.push(cx * r2, cy * r2, -hw, 0, 0, cx, cy, 0, grain);
+    }
+    return { buf: buffer(v), count: (n + 1) * 2 };
+  }
+
+  const load = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.src = src; });
+  coins.forEach((coin) => {
+    Promise.all([load(coin.obv), load(coin.rev)]).then(([o, r]) => {
+      const e1 = edgeColor(o), e2 = edgeColor(r), edge = e1.map((v, i) => (v + e2[i]) / 2);
+      coin.gpu = {
+        front: texture(o), back: texture(r),
+        rim: buildRim(outline(o, 360, false), outline(r, 360, true)),
+        lit: edge.map((v) => Math.min(1, v * 1.15)), dark: edge.map((v) => v * 0.3)
+      };
+      if (coin === active) draw();
+    });
+  });
+
+  function sizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(viewer.clientWidth * dpr * PAD);
+    if (w > 0 && canvas.width !== w) { canvas.width = canvas.height = w; }
+    draw();
+  }
+
+  let angle = 0, velocity = 0, target = 0, rafId = 0, last = 0;
+
+  function setCommon(pr, s, c) {
+    gl.useProgram(pr);
+    gl.uniform1f(gl.getUniformLocation(pr, 'uS'), s);
+    gl.uniform1f(gl.getUniformLocation(pr, 'uC'), c);
+    gl.uniform1f(gl.getUniformLocation(pr, 'uCam'), CAM);
+    gl.uniform1f(gl.getUniformLocation(pr, 'uRest'), CAM / (CAM - hw)); // a face at rest is exactly photo size
+    gl.uniform1f(gl.getUniformLocation(pr, 'uPad'), PAD);
+  }
+
+  function draw() {
+    const g = active.gpu;
+    if (!g || !canvas.width) return;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    const phi = angle * Math.PI / 180;
+    const s = Math.sin(phi), c = Math.cos(phi);
+    const frontVisible = c >= 0;
+
+    // rim (skipped entirely when a face is square to you)
+    if (false) {   // edge switched off
+      setCommon(rimProg, s, c);
+      gl.uniform3fv(gl.getUniformLocation(rimProg, 'uL'), L);
+      gl.uniform3fv(gl.getUniformLocation(rimProg, 'uLit'), g.lit);
+      gl.uniform3fv(gl.getUniformLocation(rimProg, 'uDark'), g.dark);
+      gl.bindBuffer(gl.ARRAY_BUFFER, g.rim.buf);
+      bindAttribs(rimProg);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, g.rim.count);
+    }
+
+    // visible face
+    setCommon(faceProg, s, c);
+    const towardLight = frontVisible ? s < 0 : s > 0;
+    const light = 1 - 0.72 * (1 - Math.abs(c)) * (towardLight ? 0.6 : 1);
+    gl.uniform1f(gl.getUniformLocation(faceProg, 'uLight'), light);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, frontVisible ? g.front : g.back);
+    gl.uniform1i(gl.getUniformLocation(faceProg, 'uTex'), 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, frontVisible ? frontBuf : backBuf);
+    bindAttribs(faceProg);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  const render = draw;
+
+  // Rotation: one smooth eased half-turn, no overshoot. A click mid-turn starts a new
+  // half-turn from wherever the coin is, so it never jumps or reverses.
+  const SPIN_MS = 900;
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  let from = 0, startT = 0;
+  function tick(now) {
+    const t = Math.min(1, (now - startT) / SPIN_MS);
+    angle = from + (target - from) * ease(t);
+    if (t >= 1) { angle = target; render(); rafId = 0; return; }
+    render();
+    rafId = requestAnimationFrame(tick);
+  }
+  function spinTo(t) {
+    target = t;
+    if (reducedNow()) { angle = target; render(); return; }
+    from = angle; startT = performance.now();
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  }
+  function snapRotation() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0; angle = target; velocity = 0; render();
+  }
+  const reducedNow = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  render();
+
+  const shadow = viewer.querySelector('.shadow');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // One straight, calm move: the coin travels from its cell to the centre while the page blurs.
+  const OPEN = { ms: 480, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
+  const CLOSE = { ms: 400, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' };
+
+  // The viewer always sits at its final, large position; the move is a transform only (GPU, no relayout).
+  const bigRect = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    const s = Math.min(w, h) * 0.9;
+    return { left: (w - s) / 2, top: (h - s) / 2, width: s, height: s };
+  };
+  const placeBig = () => {
+    const r = bigRect();
+    Object.assign(viewer.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    sizeCanvas();
+    return r;
+  };
+
+  // The coin's place in its cell, as a translate + scale of the large viewer
+  function homeTransform() {
+    const big = placeBig();
+    const sr = active.img.getBoundingClientRect();
+    const sc = sr.width / big.width;
+    const dx = (sr.left + sr.width / 2) - (big.left + big.width / 2);
+    const dy = (sr.top + sr.height / 2) - (big.top + big.height / 2);
+    return `translate3d(${dx}px, ${dy}px, 0) scale(${sc})`;
+  }
+
+  let anims = [];
+
+  function run(home, opening, onDone) {
+    anims.forEach((a) => a.cancel());
+    const t = opening ? OPEN : CLOSE;
+    const opt = { duration: reduced.matches ? 1 : t.ms, easing: t.easing, fill: 'both' };
+    const atHome = [{ transform: home }, { transform: 'none' }];
+    const fade = [{ opacity: 0 }, { opacity: 1 }];
+    const shadowFade = [{ opacity: 0 }, { opacity: 0.55 }];
+    const dir = (f) => (opening ? f : [...f].reverse());
+    anims = [
+      viewer.animate(dir(atHome), opt),
+      veil.animate(dir(fade), opt),
+      shadow.animate(dir(shadowFade), opt)
+    ];
+    anims[0].onfinish = onDone;
+  }
+
+  function settle() {
+    anims.forEach((a) => a.cancel());
+    anims = [];
+  }
+
+  function finishedClosed() {
+    settle();
+    snapRotation();
+    viewer.hidden = true;
+    veil.classList.remove('on');
+    active.el.classList.remove('away');
+    state = 'closed';
+    active.el.focus({ preventScroll: true });
+  }
+  function finishedOpen() {
+    settle();
+    state = 'open';
+    viewer.focus({ preventScroll: true });
+  }
+
+  function open(coin) {
+    if (state === 'closing' && coin === active) {   // changed mind mid-way: go back the way it came
+      anims.forEach((a) => a.reverse());
+      state = 'opening';
+      anims[0].onfinish = finishedOpen;
+      return;
+    }
+    if (state !== 'closed') return;
+    state = 'opening';
+    active = coin;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0; target = angle = coin.turns * 180; velocity = 0;
+    viewer.hidden = false;
+    veil.classList.add('on');
+    run(homeTransform(), true, finishedOpen);
+    requestAnimationFrame(() => coin.el.classList.add('away'));
+  }
+
+  function close() {
+    if (state === 'opening') {
+      anims.forEach((a) => a.reverse());
+      state = 'closing';
+      anims[0].onfinish = finishedClosed;
+      return;
+    }
+    if (state !== 'open') return;
+    state = 'closing';
+    active.img.src = active.turns % 2 ? active.rev : active.obv;
+    run(homeTransform(), false, finishedClosed);
+  }
+
+  function flip() {
+    if (state !== 'open' && state !== 'opening') return;
+    active.turns += 1;
+    spinTo(active.turns * 180);
+  }
+
+  // Only the coin itself is clickable; the transparent corners of its box count as background.
+  function onCoin(e) {
+    const r = viewer.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    return Math.hypot(dx, dy) <= r.width * (active.hit || 0.49);
+  }
+  viewer.addEventListener('click', (e) => (onCoin(e) ? flip() : close()));
+  viewer.addEventListener('pointermove', (e) => {
+    if (state === 'open') viewer.style.cursor = onCoin(e) ? 'pointer' : 'zoom-out';
+  });
+
+  // Block scrolling while the coin is out, without hiding the scrollbar (hiding it shifts the page)
+  const block = (e) => { if (state !== 'closed') e.preventDefault(); };
+  window.addEventListener('wheel', block, { passive: false });
+  window.addEventListener('touchmove', block, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    if (state !== 'closed' && ['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key) && e.target !== viewer) e.preventDefault();
+  });
+
+  coins.forEach((coin) => coin.el.addEventListener('click', () => open(coin)));
+  veil.addEventListener('click', close);
+  viewer.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  window.addEventListener('resize', () => {
+    if (state === 'open') placeBig();
+  });
+})();
+</script>
+</body>
+</html>
